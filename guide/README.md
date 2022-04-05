@@ -13,7 +13,7 @@ li⬅ [Index of all go-profiler-notes](../README.md)
 
 🚧 This document is a work in progress. All sections above will become clickable links over time. The best way to find out about updates is to follow me and [my thread on twitter](https://twitter.com/felixge/status/1435537024388304900) where I'll announce new sections being added.
 
-🚧 本文档正在进行中。随着时间的推移，以上所有部分都将成为可点击的链接。了解最新动态的最佳方式是关注我和我在 twitter 上的帖子，我将在上面宣布添加的内容。
+🚧 本文档正在进行中。随着时间的推移，以上所有部分都将成为可点击的链接。了解最新动态的最佳方式是关注我和[我在 twitter 上的帖子](https://twitter.com/felixge/status/1435537024388304900)，我将在上面宣布添加的内容。
 
 # 导论
 
@@ -21,7 +21,7 @@ li⬅ [Index of all go-profiler-notes](../README.md)
 
 This is a practical guide aimed at busy gophers interested in improving their programs using profiling, tracing and other observability techniques. If you're not well versed in the internals of Go, it is recommended that you read the entire introduction first. After that you should feel free to jump to any section you are interested in.
 
-这是一本面向有兴趣使用分析(profiling)、跟踪(tracing)和其他可观察性技术(observability techniques)来改进程序的忙碌的Gophers的实用指南。如果你不熟悉 Go 的内部结构，建议你先阅读整个介绍。之后，你应该可以随意跳到你任意感兴趣的部分。
+这是一本面向有兴趣使用分析(profiling)、跟踪(tracing)和其他可观察性技术(observability techniques)来改进程序的忙碌的Gophers的实用指南。如果你不熟悉 Go 的内部结构，建议你先阅读整个介绍。之后，你可以跳到你任意感兴趣的部分。
 
 ## Mental Model for Go
 ## Go 的认知模型
@@ -82,7 +82,7 @@ Most of the time, Go programs are running multiple goroutines, so you will have 
 
 Of course the model above glosses over many details. In reality it's turtles all the way down, and the Go scheduler works on top of threads managed by the operating system, and even CPUs themselves are capable of hyper-threading which can be seen as a form of scheduling. So if you're interested, feel free to continue down this rabbit hole via Ardan labs series on [Scheduling in Go](https://www.ardanlabs.com/blog/2018/08/scheduling-in-go-part1.html) or similar material.
 
-当然，上面的模型掩盖了许多细节。实际上，一路向下探究(it's turtles all the way down)，你会发现Go 调度程序工作在操作系统管理的线程之上，甚至 CPU 本身也能够进行超线程处理，这可以看作是一种调度形式。如果你有对此感兴趣的话，可以去阅读 Ardan 实验室[关于 Go 调度](https://www.ardanlabs.com/blog/2018/08/scheduling-in-go-part1.html)文章系列或类似材料。
+当然，上面的模型掩盖了许多细节。实际上，一路向下探究(it's turtles all the way down)，你会发现Go 调度程序工作在操作系统管理的线程之上，甚至 CPU 本身也能够进行超线程处理，这可以看作是一种调度形式。如果你有对此感兴趣的话，可以去阅读 Ardan 实验室[关于 Go 调度](https://www.ardanlabs.com/blog/2018/08/scheduling-in-go-part1.html)系列文章或类似资料。
 
 However, the model above should be sufficient to understand the remainder of this guide. In particular it should become clear that the time measured by the various Go profilers is essentially the time your goroutines are spending in the `Executing` and `Waiting` states as illustrated by the diagram below.
 
@@ -130,7 +130,7 @@ func add(a, b int) int {
 
 Here we have a `main()` function that starts out by reserving some space on the stack for the variable `sum`. When the `add()` function gets called, it gets its own frame to hold the local `a` and `b` parameters. Once the `add()` returns, its data is discarded by moving the stack pointer back to the end of the `main()` function's frame, and the `sum` variable gets updated with the result. Meanwhile the old values of `add()` linger beyond the stack pointer to be overwritten by the next function call. Below is a visualization of this process:
 
-这里我们有一个 `main()` 函数，它首先在栈上为变量 `sum` 保留一些空间。当 `add()` 函数被调用时，它会使用自己的栈帧空间来保存本地 `a` 和 `b` 参数。一旦 `add()` 返回，它的数据通过将栈指针移回到 `main()` 函数帧的末尾而被丢弃，并且 `sum` 变量被更细为函数`add()`的返回值。同时 `add()` 的旧值在堆栈指针之外徘徊，将被下一个函数调用覆盖。下面是这个过程的可视化：
+这里我们有一个 `main()` 函数，它首先在栈上为变量 `sum` 保留一些空间。当 `add()` 函数被调用时，它会使用自己的栈帧空间来保存本地 `a` 和 `b` 参数。一旦 `add()` 返回，它的数据通过将栈指针移回到 `main()` 函数帧的末尾而被丢弃，并且 `sum` 变量被更新为函数`add()`的返回值。同时 `add()` 的旧值在堆栈指针之外徘徊，将被下一个函数调用覆盖。下面是这个过程的可视化：
 
 <img src="./stack.gif" width=400/>
 
@@ -171,7 +171,7 @@ Normally Go would be able to allocate the `sum` variable inside of the `add()` f
 
 The heap is used for storing data that might outlive the function that creates it, as well as for any data that is shared between goroutines using pointers. However, this raises the question of how this memory gets freed. Because unlike stack allocations, heap allocations can't be discarded when the function that created them returns.
 
-堆用于存储可能比创建它的函数声明周期更长的数据，以及使用指针在 goroutine 之间共享的任何数据。然而这就涉及了如何释放这些内存的问题。因为与栈分配不同，堆分配在创建它们的函数返回时不能被丢弃(discard)。
+堆用于存储可能比创建它的函数生命周期更长的数据，以及使用指针在 goroutine 之间共享的任何数据。然而这就涉及了如何释放这些内存的问题。因为与栈分配不同，堆分配在创建它们的函数返回时不能被丢弃(discard)。
 
 Go solves this problem using its built-in garbage collector. The details of its implementation are very complex, but from a birds eye view, it keeps track of your memory as shown in the picture below. Here you can see three goroutines that have pointers to green allocations on the heap. Some of these allocations also have pointers to other allocations shown in green. Additionally there are grey allocations that may point to the green allocations or each other, but they are not referenced by a green allocation themselves. Those allocations were once reachable, but are now considered to be garbage. This can happen if the function that allocated their pointers on the stack returned, or their value was overwritten. The GC is responsible for automatically identifying and freeing those allocations.
 
@@ -209,7 +209,7 @@ Here is an overview of the profilers built into the Go runtime. For more details
 
 下面是 Go 运行时中内置的分析器的概述。有关更多详细信息，请访问后面的链接。
 
-| | [CPU](#cpu-profiler) | [内存(Memory)](#memory-profiler) | [阻塞(Block)]](#block-profiler) | [互斥锁(Mutex)](#mutex-profiler) | [Goroutine](#goroutine-profiler) | [线程创建(ThreadCreate)](#threadcreate-profiler) |
+| | [CPU](#cpu-profiler) | [内存(Memory)](#memory-profiler) | [阻塞(Block)](#block-profiler) | [互斥锁(Mutex)](#mutex-profiler) | [Goroutine](#goroutine-profiler) | [线程创建(ThreadCreate)](#threadcreate-profiler) |
 |-|-|-|-|-|-|-|
 |生产环境使用安全性(Production Safety)|✅|✅|⚠ (1.)|✅|⚠️ (2.)|🐞 (3.)|
 |安全率(Safe Rate)|default|default|❌ (1.)|`100`|`1000` goroutines|-|
@@ -218,14 +218,19 @@ Here is an overview of the profilers built into the Go runtime. For more details
 |分析器标签支持(Profiler Labels)|✅|❌|❌|❌|✅|-|
 
 1. The block profiler can be a significant source of CPU overhead if configured incorrectly. See the [warning](#block-profiler-limitations).
-  如果配置不正确，阻塞分析器(block profiler)可能是 CPU 开销的重要来源。详情[见警告]。(#block-profiler-limitations)。
+
+    如果配置不正确，阻塞分析器(block profiler)可能是 CPU 开销的重要来源。详情[见警告]。(#block-profiler-limitations)。
+
 2. One O(N) stop-the-world pauses where N is the number of goroutines. Expect ~1-10µsec pause per goroutine.
-  O(N) 的stop-the-world 暂停，N是goroutines的数量，每个goroutine暂停耗时~1-10µsec。
+
+    O(N) 次的stop-the-world，N是goroutines的数量，每个goroutine暂停耗时~1-10µsec。
 3. Totally broken, don't try to use it.
-  不要尝试使用。
+
+    不要尝试使用。
 
 4. Depends on the API.
-  取决于 API。
+
+    取决于 API。
 
 <!-- TODO mega snippet to enable all profilers -->
 
@@ -242,6 +247,7 @@ Go 的 CPU 分析器可以帮助你找出代码中的哪些部分消耗大量 CP
 ⚠️ 请注意，CPU 时间通常不同于用户实际体验的时间（也称为延迟）。例如，一个典型的 http 请求可能需要 100 毫秒才能完成，但在数据库上等待 95 毫秒时只消耗 5 毫秒的 CPU 时间。如果两个 goroutine 并行执行 CPU 密集型工作，请求也可能需要 100 毫秒，但会花费 200 毫秒的 CPU。如果这让你感到困惑，请参阅 [Goroutine 调度器](#goroutine-scheduler)部分。
 
 You can control the CPU profiler via various APIs:
+
 你可以通过各种 API 控制 CPU 分析器：
 
 - `go test -cpuprofile cpu.pprof` will run your tests and write a CPU profile to a file named `cpu.pprof`.
@@ -308,13 +314,14 @@ The resulting profile will include a new label column and might look something l
 |main.work;main.directWork|user:alice|3|30000000|
 
 Viewing the same profile with pprof's Graph view will also include the labels:
+
 使用 pprof 的 Graph 视图查看相同的profile文件也将包括标签：
 
 <img src="./cpu-profiler-labels.png" width=400/>
 
 How you use these labels is up to you. You might include things such as `user ids`, `request ids`, `http endpoints`, `subscription plan` or other data that can allow you to get a better understanding of what types of requests are causing high CPU utilization, even when they are being processed by the same code paths. That being said, using labels will increase the size of your pprof files. So you should probably start with low cardinality labels such as endpoints before moving on to high cardinality labels once you feel confident that they don't impact the performance of your application.
 
-如何使用这些标签取决于你。你可能会包含诸如`user ids`、`request ids`、`http endpoints`、`subscription plan`或其他数据之类的内容，这些数据可以让你更好地了解哪些类型的请求会导致 CPU 负载高。即使它们是由相同的代码处理的路径，话虽如此，使用标签会增加 pprof 文件的大小。因此，一旦你确信它们不会影响应用程序的性能，你可能应该从类似`http endpoints`等低基数(low cardinality)标签开始，然后再转向高基数(high cardinality)标签。
+如何使用这些标签取决于你。你可能会包含诸如`user ids`、`request ids`、`http endpoints`、`subscription plan`或其他数据之类的内容，这些数据可以让你更好地了解哪些类型的请求会导致 CPU 的高负载。即使它们是由相同的代码处理的路径，话虽如此，使用标签会增加 pprof 文件的大小。因此，一旦你确信它们不会影响应用程序的性能，你可能应该从类似`http endpoints`等低基数(low cardinality)标签开始，然后再转向高基数(high cardinality)标签。
 
 ⚠️ Go 1.17 and below contained several bugs that could cause some profiler labels to be missing from CPU profiles, see [CPU Profiler Limitations](#cpu-profiler-limitations) for more information.
 
@@ -466,7 +473,7 @@ A common confusion is looking at the total amount of memory reported by the `inu
 - RSS includes a lot more than just Go heap memory usage by definition, e.g. the memory used by goroutine stacks, the program executable, shared libraries as well as memory allocated by C functions.
     按照RSS定义，它不仅仅包括 Go 堆内存，还包括goroutine 栈使用的内存、以及程序可执行文件或共享库以及 C 函数分配的内存。
 - The GC may decide to not return free memory to the OS immediately, but this should be a lesser issue after [runtime changes in Go 1.16](https://golang.org/doc/go1.16#runtime).
-    Go GC 之后并不会立即将空闲内存返回给操作系统，但这在 Go 1.16 中的[运行时更改后](https://golang.org/doc/go1.16#runtime)应该是一个较小的问题。
+    Go GC 之后并不会立即将空闲内存返回给操作系统，但这在 Go 1.16 [运行时更改后](https://golang.org/doc/go1.16#runtime)应该是一个较小的问题。
 - Go uses a non-moving GC, so in some cases free heap memory might be fragmented in ways that prevent Go from releasing it to the OS.
     Go 使用非移动 GC，因此在某些情况下，空闲堆内存可能会以碎片化(fragmented)形式阻止 Go 将其释放到操作系统。
 
@@ -477,7 +484,7 @@ A common confusion is looking at the total amount of memory reported by the `inu
 
 The pseudo code below should capture the essential aspects of the memory profiler's implementation to give you a better intuition for it. As you can see, the `malloc()` function inside of the Go runtime uses `poisson_sample(size)` to determine if an allocation should be sampled. If yes, a stack trace `s` is taken and used as the key in the `mem_profile` hash map to increment the `allocs` and `alloc_bytes` counters. Additionally the `track_profiled(object, s)` call marks the `object` as a sampled allocation on the heap and associates the stack trace `s` with it.
 
-下面的伪代码(pseudo code)展示捕获内存分析器实现的基本思路，以便为你提供更好的直觉。如你所见，Go 运行时内部的 `malloc()` 函数使用 `poisson_sample(size)` 来确定是否应对该次内存分配进行采样。如果是，则获取堆栈跟踪 `s` 并将其用作 `mem_profile` 哈希表中的键，以增加 `allocs` 和 `alloc_bytes` 计数器。此外，`track_profiled(object, s)` 调用将对象标记为堆上的采样分配，并将堆栈跟踪 `s` 与它相关联。
+下面的伪代码(pseudo code)展示内存分析器实现的基本思路，以便为你提供更好的直觉。如你所见，Go 运行时内部的 `malloc()` 函数使用 `poisson_sample(size)` 来确定是否应对该次内存分配进行采样。如果是，则获取堆栈跟踪 `s` 并将其用作 `mem_profile` 哈希表中的键，以增加 `allocs` 和 `alloc_bytes` 计数器。此外，`track_profiled(object, s)` 调用将对象标记为堆上的采样分配，并将堆栈跟踪 `s` 与它相关联。
 
 ```
 func malloc(size):
@@ -512,7 +519,7 @@ The `free_*` counters themselves are not included in the final memory profile. I
 
 ### Memory Profiler Limitations
 
-### 内存分析器限制
+### 内存分析器的限制
 
 There are a few known issues and limitations of the memory profiler that you might want to be aware of:
 
@@ -561,7 +568,7 @@ Go 中的阻塞分析器衡量你的 goroutine 在等待通道以及同步包提
 
 ⚠️ Block profiles do not include time spend waiting on I/O, Sleep, GC and various other waiting states. Additionally blocking events are not recorded until they have completed, so the block profile can't be used to debug why a Go program is currently hanging. The latter can be determined using the Goroutine Profiler.
 
-⚠️ 阻塞 profile文件不包括等待 I/O、睡眠、GC 和各种其他等待状态的时间。此外，阻塞事件在完成之前不会被记录，因此阻塞profile文件不能用于调试 Go 程序当前挂起的原因。后者可以使用 Goroutine 分析器 确定。
+⚠️ 阻塞 profile文件不包括等待 I/O、睡眠、GC 和各种其他等待状态的时间。此外，阻塞事件在完成之前不会被记录，因此阻塞profile文件不能用于调试 Go 程序当前挂起的原因。后者可以使用 Goroutine 分析器确定。
 
 You can control the block profiler via various APIs:
 
@@ -636,7 +643,7 @@ In other words, if you set `rate` to `10.000` (the unit is nanoseconds), all blo
 
 ### Block vs Mutex Profiler
 
-### 阻塞分析与互斥锁分析器
+### 阻塞分析器与互斥锁分析器
 
 Both block and mutex profiler report time waiting on mutexes. The difference is that the block profiler captures the time waiting to acquire a `Lock()`, whereas the mutex profiler captures the time another goroutine was waiting before `Unlock()` allowed it to proceed.
 
