@@ -95,7 +95,7 @@ func add(a, b int) int {
 
 你可能想知道如果栈空间不足时候将会发生什么情况？在 C 这样的语言中，它将会导致栈溢出错误（stack overflow error）。然后 Go 是通过复制出两倍大的堆栈来自动处理这个问题，这种方式允许 goroutines 可以从很小的栈空间开始，通常为 2 KiB，也是使 [goroutines 比操作系统线程更具可扩展性](https://golang.org/doc/faq#goroutines)的关键因素之一。
 
-栈的另一个方面是它如何参与创建堆栈跟踪。这话题有点复杂，但如果你有兴趣，请查看此仓库中的关于 [Go 栈跟踪](https://github.com/DataDog/go-profiler-notes/blob/main/stack-traces.md)部分文档。
+栈的另一个方面是它如何参与创建堆栈跟踪。这话题有点复杂，但如果你有兴趣，请查看此仓库中的关于 [Go 栈跟踪](https://github.com/cyub/go-profiler-notes-cn/blob/main/stack-traces-zh.md)部分文档。
 
 #### 堆
 
