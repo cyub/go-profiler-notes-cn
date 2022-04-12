@@ -154,47 +154,48 @@ Russ Cox 最初在他的 [Go 1.2 Runtime Symbol Information](https://golang.org/
 
 Go 的栈追踪实现的核心是 [`gentraceback()`](https://github.com/golang/go/blob/go1.16.3/src/runtime/traceback.go#L76-L86) 函数，该函数被从各个地方调用。如果调用者是例如`runtime.Callers()` 函数只需要unwinding，但是例如`panic()` 需要文本输出，这也需要符号化。此外，代码必须处理与 x86 略有不同的[链接寄存器架构](https://en.wikipedia.org/wiki/Link_register)（如 ARM）之间的差异。这种unwinding、符号化、对不同架构的支持和定制数据结构的组合对于 Go 团队的系统开发人员来说可能只是日常工作，但对我来说绝对是棘手的，所以请注意我的潜在不准确之处下面的描述。
 
-Each frame lookup begins with the current `pc` which is passed to [`findfunc()`](https://github.com/golang/go/blob/go1.16.3/src/runtime/symtab.go#L671) which looks up the meta data for the function that contains the `pc`. Historically this was done using `O(log N)` binary search, but [nowadays](https://go-review.googlesource.com/c/go/+/2097/) there is a hash-map-like index of [`findfuncbucket`](https://github.com/golang/go/blob/go1.16.3/src/runtime/symtab.go#L671) structs that usually directly guides us to the right entry using an `O(1)` algorithm.
+每个栈帧查找都从当前的 `pc` 开始，该 `pc` 会被传递给 [`findfunc()`](https://github.com/golang/go/blob/go1.16.3/src/runtime/symtab.go#L671) 去查找包含该 `pc` 的函数的元数据。从历史上看，这是使用 `O(log N)` 复杂度的二叉搜索完成的，但[现在](https://go-review.googlesource.com/c/go/+/2097/)有一个类似哈希映射的 [`findfuncbucket`](https://github.com/golang/go/blob/go1.16.3/src/runtime/symtab.go#L671) 结构索引，通常使用 `O(1)` 算法直接引导我们找到正确的条目。
 
-The [_func](https://github.com/golang/go/blob/9baddd3f21230c55f0ad2a10f5f20579dcf0a0bb/src/runtime/runtime2.go#L825) meta data that we just retrieved contains a `pcsp` offset into the `pctab` table that maps program counters to stack pointer deltas. To decode this information, we call [`funcspdelta()`](https://github.com/golang/go/blob/go1.16.3/src/runtime/symtab.go#L903) which does a linear search over all program counters that change the `sp delta` of the function until it finds the closest (`pc`, `sp delta`) pair. For stacks with recursive call cycles, a tiny program counter cache is used to avoid doing lots of duplicated work.
 
-Now that that we have the stack pointer delta, we are almost ready to locate the next `return address (pc)` value of the caller and do the same lookup for it until we reach the "bottom" of the stack. But before that, we need to check if the current `pc` is part of one or more inlined function calls. This is done by checking the `_FUNCDATA_InlTree` data for the current `_func` and doing another linear search over the (`pc`, `inline index`) pairs in that table. Any inlined call found this way gets a virtual stack frame `pc` added to the list. Then we continue with `return address (pc)` as mentioned in the beginning of the paragraph.
+我们刚刚检索(retrieved)到的 [_func](https://github.com/golang/go/blob/9baddd3f21230c55f0ad2a10f5f20579dcf0a0bb/src/runtime/runtime2.go#L825) 元数据包含 `pctab` 表中的 `pcsp` 偏移量，该表将程序计数器映射到栈指针增量(stack pointer deltas)。为了解码这些信息，我们需调用 [`funcspdelta()`](https://github.com/golang/go/blob/go1.16.3/src/runtime/symtab.go#L903) 对所有改变函数的 `sp delta` 的程序计数器进行线性搜索，直到找到最接近的 (`pc`, `sp delta`) 对。对于具有递归调用周期的堆栈，使用小型程序计数器缓存来避免做大量重复工作。
 
-Putting it all together, under reasonable assumptions, the effective time complexity of `gocplntab` unwinding is the same as frame pointer unwinding, i.e. `O(N)` where `N` is the number of frames on the stack, but with higher constant overheads. This can be validated [experimentally](https://github.com/DataDog/go-profiler-notes/tree/main/examples/stack-unwind-overhead), but for most applications a good rule of thumb is to assume a cost of `~1µs`  to unwind a stack trace. So if you're aiming for < 1% CPU profiling overhead in production, you should try to configure your profilers to not track more than ~10k events per second per core. That's a decent amount of data, but for some tools like the [built-in tracer](https://golang.org/pkg/runtime/trace/) stack unwinding can be a significant bottleneck. In the future this could be overcome by the Go core adding [support for frame pointer unwinding](https://github.com/golang/go/issues/16638) which might be up to [50x faster](https://github.com/felixge/gounwind) than the current `gopclntab` implementation.
+现在我们有了栈指针增量，我们几乎准备好定位调用者的下一个`return address (pc)`值并对其进行相同的查找，直到我们到达堆栈的“底部”。但在此之前，我们需要检查当前 `pc` 是否是一个或多个内联函数调用的一部分。这是通过检查当前 `_func` 的 `_FUNCDATA_InlTree` 数据并对该表中的 (`pc`, `inline index`) 对进行另一次线性搜索来完成的。以这种方式找到的任何内联调用都会将虚拟堆栈帧 pc 添加到列表中。然后我们继续使用段落开头提到的`return address (pc)`。
 
-Last but not least, it's worth noting that Go ships with two `.gopclntab` implementations. In addition to the one I've just described, there is another one in the [debug/gosym](https://golang.org/pkg/debug/gosym/) package that seems to be used by the linker, `go tool addr2line` and others. If you want, you can use it yourself in combination with [debug/elf](./examples/pclnttab/linux.go) or ([debug/macho](./examples/pclnttab/darwin.go)) as a starting point for your own [gopclntab adventures](./examples/pclnttab) for good or [evil](https://tuanlinh.gitbook.io/ctf/golang-function-name-obfuscation-how-to-fool-analysis-tools).
+综上所述，在合理的假设下，`gocplntab` unwinding的有效时间复杂度与栈帧指针unwinding相同，即 `O(N)`，其中 `N` 是堆栈上的帧数，但具有更高的常量开销。这可以通过[实验进行验证](https://github.com/DataDog/go-profiler-notes/tree/main/examples/stack-unwind-overhead)的，但对于大多数应用来说，一个好的经验法则是假设unwinding栈跟踪的成本约为 `1µs`。因此，如果你的目标是在生产中实现 < 1% 的 CPU 分析开销，则应尝试将分析器配置为不跟踪每个内核每秒超过 ~10k 的事件。这是相当数量的数据，但对于某些工具，如[内置跟踪器](https://golang.org/pkg/runtime/trace/)堆栈unwinding可能是一个重大瓶颈。在未来，这可以通过 Go 核心添加对栈帧指针unwinding的支持来解决，这可能比当前的 `gopclntab` 实现[快 50 倍](https://github.com/felixge/gounwind)。
+
+
+最后但同样重要的是，值得注意的是 Go 附带了两个 `.gopclntab` 实现。除了我刚才描述的那个之外，[debug/gosym](https://golang.org/pkg/debug/gosym/) 包中还有一个似乎被链接器、`go tool addr2line` 等使用的。如果你愿意，你可以将它自己与 [debug/elf](./examples/pclnttab/linux.go) 或 ([debug/macho](./examples/pclnttab/darwin.go)) 结合使用，作为你自己的 [gopclntab 历险记](./examples/pclnttab) 善或者[恶](https://tuanlinh.gitbook.io/ctf/golang-function-name-obfuscation-how-to-fool-analysis-tools)起点。
 
 ### DWARF
 
-[DWARF](https://en.wikipedia.org/wiki/DWARF) is a standardized debugging format that is understood by many debuggers (e.g. [delve](https://github.com/go-delve/delve)) and profilers (e.g. Linux [perf](http://www.brendangregg.com/perf.html)). It enables a superset of features found in `gopclntab`, including unwinding and symbolization, but has a reputation for being very complex. The Linux kernel has famously refused to adopt DWARF unwinding for kernel stack traces:
+
+[DWARF](https://en.wikipedia.org/wiki/DWARF) 是一种标准化的调试格式，许多调试器（例如 [delve](https://github.com/go-delve/delve)）和分析器（例如 Linux [perf](http://www.brendangregg.com/perf.html)）都可以理解。在 `gopclntab` 中支持更多功能，包括unwinding 和 symbolization(符号表)，但是实现很复杂。我们都是知道，Linux 内核拒绝采用 `DWARF` unwinding 内核堆栈追踪。
 
 > The whole (and *only*) point of unwinders is to make debugging easy when a bug occurs [...]. An unwinder that is several hundred lines long is simply not even *remotely* interesting to me.
 > – [Linus Torvalds](https://lkml.org/lkml/2012/2/10/356)
 
-This lead to the [creation](https://lwn.net/Articles/728339/) of the [ORC unwinder](https://www.kernel.org/doc/html/latest/x86/orc-unwinder.html) which is now available in the kernel as yet another unwinding mechanism. However, ORCs play no role for Go stack traces, we only have to fight with ELFs and DWARFs here.
+[ORC unwinder](https://www.kernel.org/doc/html/latest/x86/orc-unwinder.html) 是内核中[另一种可用](https://lwn.net/Articles/728339/)的unwinding 机制(unwinding mechanism)。然而，ORC 对 Go 堆栈跟踪没有任何作用，我们只需要在这研究ELF 和 DWARF。
 
-The Go compiler always emits DWARF (v4) information for the binaries it produces. The format is standardized, so unlike `gopclntab`, external tools can rely on it. However, the DWARF data is also largely redundant with `gopclntab` and negatively impacts build times and binary sizes. Because of this Rob Pike is proposing to [disable it by default](https://github.com/golang/go/issues/26074), but it's still under discussion.
+Go 编译器总会生成 DWARF (v4) 信息，该信息格式是标准 DWARF (v4) 格式。不像 `gopclntab`，外部工具是可以使用该DWARF信息。DWARF 数据在 `gopclntab` 中也很大程度上是冗余的，并且会对构建时间和大小产生负面影响。因此，Rob Pike 建议默认禁用它，但仍在讨论中。
 
-Unlike `gopclntab`, DWARF information can easily be stripped from binaries at build time like this:
+与 `gopclntab` 不同，DWARF 信息可以在构建时轻松地从二进制文件中剔除掉，如下所示：
 
 ```
 go build -ldflags=-w <pkg>
 ```
 
-Just like `-fomit-frame-pointers` this is a bit of a devil's bargain, but some people don't believe in the distinction between DWARF and the devil. So if you're willing to sign a waiver of liability to your colleagues, you may proceed. Seriously so, I'd advise you to only strip DWARF symbols if it solves an important problem for you. Once DWARF information has been stripped, you won't be able to use perf, delve or other tools to profile or debug your applications in production.
+DWARF 的内部运作方式，其[官方规范](http://dwarfstd.org/)中有长达460页的介绍。对我们来说 DWARF 是 [gopclntab](#gopclntab) 的超集并且两者工作方式非常相似，就足够了。 如果你有将 pc 地址映射到堆栈指针增量的表，那么你无需栈帧指针即可unwinding堆栈。
 
-As far as the inner workings of DWARF are concerned, the [official spec](http://dwarfstd.org/) has 460 pages of wisdom on the matter. For our purposes it's probably sufficient to say that DWARF is a superset of [gopclntab](#gopclntab) and works very similar. I.e. you've got tables mapping `pc` addresses to stack pointer deltas which allow you to unwind the stack without the need for frame pointers.
+## 符号化（Symbolization）
 
-## Symbolization
-
-Symbolization is the process of taking one or more program counter (`pc`) address and turning them into human readable symbols such a function names, file names and line numbers. For example if you have two `pc` values like this:
+符号化是获取一个或多个程序计数器 (pc) 地址并将其转换为人类可读符号（例如函数名、文件名和行号）的过程。例如，如果你有两个这样的 pc 值：
 
 ```
 0x1064ac1
 0x1035683
 ```
 
-You may use symbolization to turn them into a human readable stack trace like shown below:
+你可以使用符号化将它们转换为人类可读的堆栈跟踪，如下所示：
 
 ```
 main.foo()
@@ -203,9 +204,9 @@ main.main()
 	/path/to/go-profiler-notes/examples/stack-trace/main.go:5
 ```
 
-In the Go runtime, symbolization always uses the symbol information contained in the [gopclntab](#gopclntab) section. This information can also be access via  [`runtime.CallerFramers()`](https://golang.org/pkg/runtime/#CallersFrames).
+Go 运行时符号化使用的是 [gopclntab](#gopclntab) 部分中包含的符号信息。此信息也可以通过 [`runtime.CallerFramers()`](https://golang.org/pkg/runtime/#CallersFrames) 访问。
 
-3rd party profilers such a Linux perf can't use [gopclntab](#gopclntab) and have to rely on [DWARF](#dwarf) for symbolization instead.
+Linux perf 之类的第3方分析器不能使用 [gopclntab](#gopclntab)，而必须依赖 [DWARF](#dwarf) 进行符号化。
 
 ## History
 
